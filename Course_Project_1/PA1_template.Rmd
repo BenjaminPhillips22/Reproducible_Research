@@ -18,7 +18,7 @@ if (!file.exists("activity.csv") ) {
 }
 
 #read in data or not if it's already loaded
-if(!"activity.csv" %in% ls()){
+if(!"activity" %in% ls()){
     activity <- read.csv("activity.csv")
 }
 
