@@ -20,8 +20,6 @@ if(!"storm_data" %in% ls()){
     storm_data <- read.csv("storm_data.csv.bz2")
 }
 
-# Information about the variables can be found here
-# https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf
 
 
 # download packages
@@ -33,96 +31,102 @@ library(tidyr)
 names(storm_data)
 # We are interested in EVTYPE, FATALITIES, INJURIES, PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP
 
+
 ## Across the United States, which types of events (as indicated in the EVTYPE variable)
 # are most harmful with respect to population health?
 
 
-# get the sum of fatalities for each event type
-event_fatalities <- with(storm_data, aggregate(FATALITIES, by = list(EVTYPE), sum))
-names(event_fatalities) <- c("event","total.fatalities")
+health_data <- storm_data %>% 
+    tbl_df() %>%
+    select(EVTYPE, FATALITIES, INJURIES) %>%
+    group_by(EVTYPE) %>%
+    summarise(fatalities = sum(FATALITIES), injuries = sum(INJURIES))
 
-# re-order and use the top 10
-event_fatalities <- event_fatalities[order(event_fatalities$total.fatalities, decreasing = TRUE),]
-event_fatalities <- event_fatalities[1:10,]
+fatalities_top10 <- health_data %>%
+    select(EVTYPE, fatalities) %>%
+    arrange(desc(fatalities)) %>%
+    head(10)
 
-#graph
-g1 <- ggplot(data = event_fatalities, aes(x = reorder(event, -total.fatalities), total.fatalities)) + 
+
+injuries_top10 <- health_data %>%
+    select(EVTYPE, injuries) %>%
+    arrange(desc(injuries)) %>%
+    head(10)
+
+g1 <- ggplot(data = fatalities_top10, aes(x = reorder(EVTYPE, -fatalities), fatalities)) +
     geom_bar(stat = "identity") +
     ggtitle("Total Fatalities per Event Type") +
     xlab("Event") +
     ylab("total fatalities") +
     theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 12))
-    
-print(g1)
-# Tornado has the most fatalities of any event
 
+print(g1)    
 
-# get the sum of injuries for each event type
-event_injuries <- with(storm_data, aggregate(INJURIES, by = list(EVTYPE), sum))
-names(event_injuries) <- c("event","total.injuries")
-
-# re-order and use the top 10
-event_injuries <- event_injuries[order(event_injuries$total.injuries, decreasing = TRUE),]
-event_injuries <- event_injuries[1:10,]
-
-#graph
-g2 <- ggplot(data = event_injuries, aes(x = reorder(event, -total.injuries), total.injuries)) + 
+g2 <- ggplot(data = injuries_top10, aes(x = reorder(EVTYPE, -injuries), injuries)) +
     geom_bar(stat = "identity") +
-    ggtitle("Total Injuries per Event Type") +
+    ggtitle("Total injuries per Event Type") +
     xlab("Event") +
     ylab("total injuries") +
     theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 12))
 
-print(g2)
-# Tornado has the most injuries of any event
+#print(g2)    
 
+# make the plots the same height
+gA <- ggplotGrob(g1)
+gB <- ggplotGrob(g2)
+maxHeight = grid::unit.pmax(gA$heights[2:5], gB$heights[2:5])
+gA$heights[2:5] <- as.list(maxHeight)
+gB$heightss[2:5] <- as.list(maxHeight)
 
-grid.arrange(g1,g2, nrow = 1)
-# Tornados are responsible for the most injuries and fatalities.
-
+grid.arrange(gA, gB, nrow=1) 
 
 
 
 ## Across the United States, which types of events have the greatest economic consequences?
 
-# Tidy up the data by making PROPDMG, PROPDMGEXP and CROPDMG, CROPDMGEXP one column each
-economic_data <- storm_data[,c("EVTYPE", "PROPDMG", "PROPDMGEXP", "CROPDMG", "CROPDMGEXP")]
+
+economic_data <- storm_data %>%
+    tbl_df() %>%
+    select(EVTYPE, PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP)
+
+
 
 unique(economic_data$PROPDMGEXP)
 unique(economic_data$CROPDMGEXP)
 
-exps <- c(K=1e3, k=1e3, M=1e6, B=1e9, m=1e6, h=1e2, H=1e2, "?"=1, "-"=1, "+"=1, "0"=1, "1"=1, "2"=1e2, "3"=1e3, "4"=1e4, "5"=1e5, "6"=1e6, "7"=1e7, "8"=1e8)
+# Tidy up the PRODMGEXP and CROPDMGEXP by making them numeric and
+# make PROPDMG and CROPDMG a factor, not a variable
 
-# make it not a factor, get rid of "" and turn into a number
+exps <- c(K=1e3, k=1e3, M=1e6, B=1e9, m=1e6, h=1e2, H=1e2, "?"=1, "-"=1, "+"=1,
+          "0"=1, "1"=1, "2"=1e2, "3"=1e3, "4"=1e4, "5"=1e5, "6"=1e6, "7"=1e7, "8"=1e8)
+
 economic_data$PROPDMGEXP <- as.character(economic_data$PROPDMGEXP)
 economic_data$PROPDMGEXP[economic_data$PROPDMGEXP==""] <- 1
 economic_data$PROPDMGEXP  <- exps[economic_data$PROPDMGEXP]
 
-#
 economic_data$CROPDMGEXP <- as.character(economic_data$CROPDMGEXP)
 economic_data$CROPDMGEXP[economic_data$CROPDMGEXP==""] <- 1
 economic_data$CROPDMGEXP  <- exps[economic_data$CROPDMGEXP]
 
+costs_data <- economic_data %>%
+    mutate(PROPDMG=PROPDMG*PROPDMGEXP, CROPDMG=CROPDMG*CROPDMGEXP) %>%
+    select(EVTYPE,PROPDMG,CROPDMG) %>%
+    gather(key = damage.type, value = cost, c(PROPDMG,CROPDMG)) %>%
+    group_by(EVTYPE)
 
-costs_data <- mutate(economic_data, PROPDMG=PROPDMG*PROPDMGEXP, CROPDMG=CROPDMG*CROPDMGEXP)
-costs_data <- costs_data[,c("EVTYPE","PROPDMG","CROPDMG")]
+costs_top10_events <- costs_data  %>%
+    summarise(total.cost = sum(cost)) %>%
+    arrange(desc(total.cost)) %>%
+    select(EVTYPE) %>%
+    head(10)
 
-# make PROPDMG and CROPDMG a factor, not a variable
-costs_data_new <- gather(data = costs_data, key = damage.type, cost, c(PROPDMG,CROPDMG))
+costs_data <- costs_data %>%
+    filter(EVTYPE %in% unlist(costs_top10_events))  %>%
+    group_by(EVTYPE, damage.type) %>%
+    summarise(cost = sum(cost))
 
-#get top 10 costly events
-a <- with(costs_data_new, aggregate(cost, by = list(EVTYPE), sum))
-a <- a[order(a$x, decreasing = TRUE),]
-top10_events <- a[1:10,1]
 
-# filter costs_data_new for events just in the top 10
-costs_data_top10 <- costs_data_new[costs_data_new$EVTYPE %in% top10_events, ]
-
-# aggregate cost on event type and damage type
-costs_total <- aggregate( cost~EVTYPE+damage.type, data = costs_data_top10 ,FUN=sum)
-
-# plot it
-g3 <- ggplot(data = costs_total, aes(x=reorder(EVTYPE,-cost), y=cost, fill=damage.type)) +
+g3 <- ggplot(data = costs_data, aes(x=reorder(EVTYPE,-cost), y=cost, fill=damage.type)) +
     geom_bar(stat="identity") +
     ggtitle("Total Cost per Event Type") +
     xlab("Event") +
@@ -130,6 +134,12 @@ g3 <- ggplot(data = costs_total, aes(x=reorder(EVTYPE,-cost), y=cost, fill=damag
     theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 12))
 print(g3)
 
-# Property Damage far outweighs crop damage for all the top ten most costly events,
-# except for drought, which is the most costly event in terms of crop damage
+
+
+
+
+
+
+
+
 
